@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\loan;
 
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class StoreLoanRequest extends FormRequest
 {
@@ -27,5 +29,15 @@ class StoreLoanRequest extends FormRequest
             'loan_term'             => 'required|integer|min:0',
             'monthly_extra_payment' => 'nullable|numeric|min:0',
         ];
+    }
+
+    public function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(response()->json(
+            [
+                'status'  => false,
+                'messages' => __('Invalid Data'),
+            ]
+        , 422));
     }
 }

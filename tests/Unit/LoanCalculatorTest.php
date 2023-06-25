@@ -2,48 +2,71 @@
 
 namespace Tests\Unit;
 
-use PHPUnit\Framework\TestCase;
+// use PHPUnit\Framework\TestCase;
 
-class LoanCalculatorTest extends TestCase
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase as TestsTestCase;
+
+class LoanCalculatorTest extends TestsTestCase
 {
+    use RefreshDatabase;
+
     /**
      * Test function for valid data
      */
-    public function testCalculateMonthlyPaymentWithExtraPayment()
+    public function test_calculate_monthly_payment_with_extra_payment()
     {
-        $response = $this->post('/api/calculate-payment', [
+        $loanData = [
             'loan_amount' => 100000,
             'annual_interest_rate' => 5,
-            'loan_term' => 10,
-            'monthly_extra_payment' => 100
-        ]);
+            'loan_term' => 2,
+            'monthly_extra_payment' => 0,
+        ];
+
+        $response = $this->post('/api/calculate-payment', $loanData);
 
         $response->assertStatus(200)
             ->assertJson([
-                'success' => true,
+                'status' => true,
+                'messages' => 'Monthly Payment Generated',
                 'data' => [
-                    'monthly_payment' => 1060.66
+                    'monthly_payment' => 4387.14
                 ]
             ]);
+
+        $this->assertDatabaseHas('loans', [
+            'loan_amount' => 100000,
+            'annual_interest_rate' => 5,
+            'loan_term' => 2,
+            'monthly_extra_payment' => 0,
+        ]);
     }
     /*
      * Test case for invalid data
      */
-    public function testCalculateMonthlyPaymentWithInvalidData()
+    public function test_calculate_monthly_payment_with_invalid_data()
     {
-        $response = $this->json('POST', '/api/calculate-payment', [
+        $loanData = [
             'loan_amount' => -100000,
             'annual_interest_rate' => -5,
-            'loan_term' => -10,
-            'monthly_extra_payment' => -100
-        ]);
+            'loan_term' => -2,
+            'monthly_extra_payment' => -500,
+        ];
+
+        $response = $this->post('/api/calculate-payment', $loanData);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors([
-                'loan_amount',
-                'annual_interest_rate',
-                'loan_term',
-                'monthly_extra_payment'
+            ->assertJson([
+                'status' => false,
+                'messages' => 'Invalid Data',
+                
             ]);
+
+        $this->assertDatabaseMissing('loans', [
+            'loan_amount' => -100000,
+            'annual_interest_rate' => -5,
+            'loan_term' => -2,
+            'monthly_extra_payment' => -500,
+        ]);
     }
 }

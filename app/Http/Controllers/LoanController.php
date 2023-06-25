@@ -41,7 +41,7 @@ class LoanController extends Controller
             ]);
             $this->generateAmortizationSchedule($input);
             $data = [
-                'monthly_payment' => $monthlyPayment,
+                'monthly_payment' => round($monthlyPayment,2),
             ];
             return response()->json( [
                 'status' => True,
@@ -52,7 +52,7 @@ class LoanController extends Controller
         } catch (\Throwable $th) {
            return response()->json( [
                 'status' => False,
-                'messages' => 'An error occurred',
+                'messages' => 'Invalid Data',
                 'exceptionMessage' =>  (app()->environment('local') && $th instanceof \Exception) ? $th->getMessage(): null, // Message only on local environment. Please check .env file
             ], 422 );
            
