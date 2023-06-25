@@ -40,12 +40,22 @@ class LoanController extends Controller
                 'monthly_payment'       => $monthlyPayment,
             ]);
             $this->generateAmortizationSchedule($input);
-            return response()->json([
+            $data = [
                 'monthly_payment' => $monthlyPayment,
-            ]);
+            ];
+            return response()->json( [
+                'status' => True,
+                'messages' => 'Monthly Payment Generated',
+                'data' => $data
+            ], 200 );
 
         } catch (\Throwable $th) {
-            return response()->json(['error' => 'An error occurred.'], 500);
+           return response()->json( [
+                'status' => False,
+                'messages' => 'An error occurred',
+                'exceptionMessage' =>  (app()->environment('local') && $th instanceof \Exception) ? $th->getMessage(): null, // Message only on local environment. Please check .env file
+            ], 422 );
+           
         }
     }
     /**Generated the amortization schedule  */
@@ -126,10 +136,5 @@ class LoanController extends Controller
             ExtraRepaymentSchedule::insert($extraRepaymentSchedule);
         }
         
-
-        return response()->json([
-            'amortization_schedule' => $amortizationSchedule,
-            'extra_repayment_schedule' => $extraRepaymentSchedule,
-        ]);
     }
 }
