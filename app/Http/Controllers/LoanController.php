@@ -3,25 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\loan\StoreLoanRequest;
+use App\Models\ExtraRepaymentSchedule;
+use App\Models\Loan;
+use App\Models\LoanAmortizationSchedule;
 use Illuminate\Http\Request;
 
 class LoanController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
-    {
-        //
-    }
-
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
 
     /**
      * Store a newly created resource in storage.
@@ -40,46 +28,108 @@ class LoanController extends Controller
             $numberOfMonths = $loanTerm * 12;
 
             $monthlyPayment = ($loanAmount * $monthlyInterestRate) / (1 - pow(1 + $monthlyInterestRate, -$numberOfMonths));
+            // Truncate the existing records in the loans table
+            Loan::truncate();
 
+            // Insert the new loan record
+            Loan::insert([
+                'loan_amount'           => $loanAmount,
+                'annual_interest_rate'  => $annualInterestRate,
+                'loan_term'             => $loanTerm,
+                'monthly_extra_payment' => $monthlyExtraPayment,
+                'monthly_payment'       => $monthlyPayment,
+            ]);
+            $this->generateAmortizationSchedule($input);
             return response()->json([
                 'monthly_payment' => $monthlyPayment,
             ]);
 
         } catch (\Throwable $th) {
-            //throw $th;
-            return response()->json();
+            return response()->json(['error' => 'An error occurred.'], 500);
         }
     }
-
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
+    /**Generated the amortization schedule  */
+    public function generateAmortizationSchedule($input)
     {
-        //
-    }
+        // Get the loan setup data
+        $loanAmount = $input['loan_amount'];
+        $annualInterestRate = $input['annual_interest_rate'];
+        $loanTerm = $input['loan_term'];
+        $monthlyExtraPayment = $input['monthly_extra_payment'];
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
-    {
-        //
-    }
+        // Calculate monthly payment and other parameters
+        $monthlyInterestRate = ($annualInterestRate / 12) / 100;
+        $numberOfMonths = $loanTerm * 12;
+        $currentBalance = $loanAmount;
+        $amortizationSchedule = [];
+        $extraRepaymentSchedule = [];
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
-    {
-        //
-    }
+        // Generate the amortization schedule
+        for ($month = 1; $month <= $numberOfMonths; $month++) {
+            $monthlyPayment = ($currentBalance * $monthlyInterestRate) / (1 - pow(1 + $monthlyInterestRate, -$numberOfMonths));
+            $interest = $currentBalance * $monthlyInterestRate;
+            $principal = $monthlyPayment - $interest;
+            $endingBalance = $currentBalance - $principal;
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
-    {
-        //
+            $amortizationSchedule[] = [
+                'month_number' => $month,
+                'starting_balance' => $currentBalance,
+                'monthly_payment' => $monthlyPayment,
+                'principal_component' => $principal,
+                'interest_component' => $interest,
+                'ending_balance' => $endingBalance,
+            ];
+
+            // Update the current balance after considering the extra repayment
+            $currentBalance = $endingBalance - $monthlyExtraPayment;
+        }
+
+        // Store the amortization schedule in the "loan_amortization_schedule" table
+        LoanAmortizationSchedule::truncate();
+        LoanAmortizationSchedule::insert($amortizationSchedule);
+        if($monthlyExtraPayment > 0)
+        {
+            // Generate the extra repayment schedule
+            $currentBalance = $loanAmount;
+            $remainingLoanTerm = $loanTerm * 12;
+
+            for ($month = 1; $month <= $numberOfMonths; $month++) {
+                $monthlyPayment = ($currentBalance * $monthlyInterestRate) / (1 - pow(1 + $monthlyInterestRate, -$numberOfMonths));
+                $interest = $currentBalance * $monthlyInterestRate;
+                $principal = $monthlyPayment - $interest;
+                $endingBalance = $currentBalance - $principal;
+
+                $extraRepayment = min($monthlyExtraPayment, $currentBalance);
+                $endingBalanceAfterRepayment = $endingBalance - $extraRepayment;
+                $remainingLoanTerm--;
+
+                $extraRepaymentSchedule[] = [
+                    'month_number' => $month,
+                    'starting_balance' => $currentBalance,
+                    'monthly_payment' => $monthlyPayment,
+                    'principal_component' => $principal,
+                    'interest_component' => $interest,
+                    'extra_repayment_made' => $extraRepayment,
+                    'ending_balance_after_repayment' => $endingBalanceAfterRepayment,
+                    'remaining_loan_term_after_repayment' => $remainingLoanTerm,
+                ];
+
+                // Update the current balance after considering the extra repayment
+                $currentBalance = $endingBalanceAfterRepayment;
+            }
+            // Calculate the effective interest rate
+            $totalInterestPaid = array_sum(array_column($extraRepaymentSchedule, 'interest_component'));
+            $effectiveInterestRate = ($totalInterestPaid / $loanAmount) * 100;
+            Loan::where('id',1)->update(['effective_interest_rate'=>$effectiveInterestRate]);
+            // Store the extra repayment schedule in the "extra_repayment_schedule" table
+            ExtraRepaymentSchedule::truncate();
+            ExtraRepaymentSchedule::insert($extraRepaymentSchedule);
+        }
+        
+
+        return response()->json([
+            'amortization_schedule' => $amortizationSchedule,
+            'extra_repayment_schedule' => $extraRepaymentSchedule,
+        ]);
     }
 }
